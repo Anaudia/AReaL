@@ -26,12 +26,12 @@ class AsyncPPOMATHConfig(AsyncRLExperimentConfig, PPOMATHConfig):
     @property
     def agent(self) -> AgentAbstraction:
         return AgentAbstraction(
-            "math-single-step",
+            "medical-coding-multi-turn-agent",
             args=dict(
                 gconfig=self.generation_config,
                 tokenizer_path=self.actor.path,
-                success_rate_lb=self.success_rate_lb,
-                success_rate_ub=self.success_rate_ub,
+                # success_rate_lb=self.success_rate_lb,
+                # success_rate_ub=self.success_rate_ub,
                 reward_scaling=self.ppo.reward_output_scaling,
                 reward_bias=self.ppo.reward_output_bias,
             ),
@@ -40,7 +40,7 @@ class AsyncPPOMATHConfig(AsyncRLExperimentConfig, PPOMATHConfig):
     @property
     def env(self) -> EnvServiceAbstraction:
         return EnvServiceAbstraction(
-            "math-code-single-step", args=dict(dataset_path=self.dataset.path)
+            "medical-coding-final-answer-env", args=dict(dataset_path=self.dataset.path)
         )
 
     @property

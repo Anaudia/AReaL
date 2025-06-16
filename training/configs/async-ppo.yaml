@@ -40,7 +40,7 @@ cache_clear_freq: 1
 max_head_offpolicyness: 4
 n_rollout_workers: null
 max_concurrent_rollouts: null
-flush_request_timeout: 300
+flush_request_timeout: 600
 
 # Asynchronous worker resources
 cpus_per_generation_server: 4
@@ -150,7 +150,7 @@ actor_inf:
 shuffle_dataset: true
 dataset:
   path: /storage/datasets/boba_106k_0319.jsonl
-  max_prompt_len: 1024
+  max_prompt_len: 16000
   train_bs_n_seqs: 512
 
 # Algorithm
