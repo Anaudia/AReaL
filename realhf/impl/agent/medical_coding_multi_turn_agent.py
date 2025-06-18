@@ -182,7 +182,7 @@ def parse_assistant_response_with_tool_calls(llm_response: str) -> tuple[str, di
                     # JSON was valid, but its structure doesn't match a tool call's requirements
                     # (e.g., not a dictionary, 'name' or 'arguments' missing or wrong type).
                     reason = "Malformed tool call structure (e.g., not a dict, or missing/invalid 'name' or 'arguments' keys/types)."
-                    print(f"Warning: {reason} Raw content: '{json_str}'")
+                    print(f"Warning: {reason} '") # Raw content: '{json_str}
                     
                     # Add diagnostic information to the fallback call's arguments
                     fallback_call["arguments"]["subchapter"] = "No Content"
@@ -191,7 +191,7 @@ def parse_assistant_response_with_tool_calls(llm_response: str) -> tuple[str, di
             except json.JSONDecodeError as e:
                 # Failed to parse the string as JSON.
                 reason = f"JSONDecodeError: {str(e)}"
-                print(f"Warning: Failed to parse JSON from tool call block: {e}. Raw content: '{json_str}'")
+                print(f"Warning: Failed to parse JSON from tool call block: {e}. ")  #Raw content: '{json_str}'
                 
                 # Add diagnostic information to the fallback call's arguments
                 fallback_call["arguments"]["subchapter"] =  "No Content"
@@ -465,20 +465,37 @@ class MathMultiTurnAgent(Agent):
             token_ids = list(act.seqs[0])
 
             feedback = None
+
+            if not assistant_message_from_parse.get("tool_calls") and not success[0]:
+                break
+
             if success[0]:
                 # feedback = "Congratulations! You are correct!"
                 break
             else:
                 feedback = tool_feedback
 
+            
             feedback = "\n" + self.tokenizer.apply_chat_template(
                 [dict(content=feedback, role="user")],
                 add_generation_prompt=True,
                 tokenize=False,
             )
+            
             logger.debug(f"New Feedback: {feedback[:2000]}")
             feedback = self.tokenizer(feedback)["input_ids"]
+
+            generation_buffer = self.gconfig.max_new_tokens
+            max_allowed_len = self.max_context_length - generation_buffer
+
+            
             token_ids.extend(feedback)
+            print(f"LLM Reponse: {llm_response}")
+            print(f"Feedback tokens: {feedback[:2000]}")
+            print(f"Feedback token ids: {len(feedback)}")
+            print(f"Original feedback: {feedback[:2000]}")
+            print(f"Total token length: {len(token_ids)}")
+            print(f"Tokens decoded: {self.tokenizer.decode(token_ids)}")
 
         self.log_rewards_to_file(
             str(qid),

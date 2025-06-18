@@ -493,11 +493,27 @@ class PPOActorInterface(model_api.ModelInterface):
             )
             return logprobs
 
-        input_flattend = SequenceSample.from_default(
-            ids=list(range(input_.bs * self.group_size)),
-            seqlens=flat2d(input_.seqlens["packed_input_ids"]),
-            data=dict(packed_input_ids=input_.data["packed_input_ids"]),
+        #### Start Change ####
+        # input_flattend = SequenceSample.from_default(
+        #     ids=list(range(input_.bs * self.group_size)),
+        #     seqlens=flat2d(input_.seqlens["packed_input_ids"]),
+        #     data=dict(packed_input_ids=input_.data["packed_input_ids"]),
+        # )
+        all_seqlens_flat = flat2d(input_.seqlens["packed_input_ids"])
+        num_total_turns = len(all_seqlens_flat)
+        
+        # Directly construct the flattened SequenceSample, avoiding from_default
+        input_flattend = SequenceSample(
+            keys={"packed_input_ids"},
+            ids=list(range(num_total_turns)),
+            seqlens={"packed_input_ids": [[l] for l in all_seqlens_flat]},
+            trailing_shapes={"packed_input_ids": input_.trailing_shapes["packed_input_ids"]},
+            dtypes={"packed_input_ids": input_.dtypes["packed_input_ids"]},
+            data={"packed_input_ids": input_.data["packed_input_ids"]},
         )
+
+
+        #### End Change ####
         # add posthook to avoid storing full logits
         logprobs = module.forward(
             input_=input_flattend,
@@ -1056,11 +1072,28 @@ class PPOCriticInterface(model_api.ModelInterface):
         module = model.module
         module.eval()
 
-        input_flattend = SequenceSample.from_default(
-            ids=list(range(input_.bs * self.group_size)),
-            seqlens=flat2d(input_.seqlens["packed_input_ids"]),
-            data=dict(packed_input_ids=input_.data["packed_input_ids"]),
+
+        #### Start Change ####
+        # input_flattend = SequenceSample.from_default(
+        #     ids=list(range(input_.bs * self.group_size)),
+        #     seqlens=flat2d(input_.seqlens["packed_input_ids"]),
+        #     data=dict(packed_input_ids=input_.data["packed_input_ids"]),
+        # )
+        all_seqlens_flat = flat2d(input_.seqlens["packed_input_ids"])
+        num_total_turns = len(all_seqlens_flat)
+
+        # Directly construct the flattened SequenceSample, avoiding from_default
+        input_flattend = SequenceSample(
+            keys={"packed_input_ids"},
+            ids=list(range(num_total_turns)),
+            seqlens={"packed_input_ids": [[l] for l in all_seqlens_flat]},
+            trailing_shapes={"packed_input_ids": input_.trailing_shapes["packed_input_ids"]},
+            dtypes={"packed_input_ids": input_.dtypes["packed_input_ids"]},
+            data={"packed_input_ids": input_.data["packed_input_ids"]},
         )
+        #### End Change ####
+
+
         if self.disable_value:
             scores = input_.data["packed_input_ids"].new_zeros(dtype=module.dtype)
         else:
