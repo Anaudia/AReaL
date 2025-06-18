@@ -470,8 +470,8 @@ class MathMultiTurnAgent(Agent):
                 break
 
             if success[0]:
+                # feedback = "Congratulations! You are correct!"
                 break
-
             else:
                 feedback = tool_feedback
 
@@ -485,6 +485,8 @@ class MathMultiTurnAgent(Agent):
             logger.debug(f"New Feedback: {feedback[:2000]}")
             feedback = self.tokenizer(feedback)["input_ids"]
 
+            generation_buffer = self.gconfig.max_new_tokens
+            max_allowed_len = self.max_context_length - generation_buffer
 
             
             token_ids.extend(feedback)
@@ -494,16 +496,6 @@ class MathMultiTurnAgent(Agent):
             print(f"Original feedback: {feedback[:2000]}")
             print(f"Total token length: {len(token_ids)}")
             print(f"Tokens decoded: {self.tokenizer.decode(token_ids)}")
-
-
-            max_context = 32768 - self.gconfig.max_new_tokens
-            if len(token_ids) > max_context:
-
-                logger.info(
-                    f"Context for next turn ({len(token_ids)} tokens) would exceed "
-                    f"the limit ({max_context}). Terminating trajectory."
-                )
-                break
 
         self.log_rewards_to_file(
             str(qid),
