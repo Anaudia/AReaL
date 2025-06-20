@@ -327,6 +327,9 @@ class MathMultiTurnAgent(Agent):
         )[0]
 
         token_ids = prompt_token_ids
+        all_rewards = []
+        all_answers = []
+        all_success = []
         x = dict(
             keys=[
                 "packed_input_ids",
@@ -379,16 +382,12 @@ class MathMultiTurnAgent(Agent):
                 packed_input_ids=[],
                 seq_no_eos_mask=[],
                 rewards=[],
-                version_start=None,
-                version_end=None,
+                version_start=[],
+                version_end=[],
                 birth_time=torch.tensor([birth_time], dtype=torch.long),
                 prompt_mask=[],
             ),
         )
-
-        full_input_ids   = prompt_token_ids.copy()
-        full_prompt_mask = [1.0] * len(prompt_token_ids)     # 1 = “prompt / not-generated”
-        full_logprobs    = [0.0] * (len(prompt_token_ids)-1)  # one shorter than seq
 
         for turn in range(self.num_turns):
             await obs_queue.put((qid, token_ids, self.gconfig))
@@ -408,6 +407,8 @@ class MathMultiTurnAgent(Agent):
 
             answers = [seq_str.split(prompt_str)[1] for seq_str in seq_strs]
 
+
+
             #### My Large modification ####
             
             llm_response, assistant_message_from_parse, original_think_content = parse_assistant_response_with_tool_calls(answers[0])
@@ -426,8 +427,9 @@ class MathMultiTurnAgent(Agent):
 
             # single-step env for evaluating generated solutions
             if assistant_message_from_parse.get("tool_calls"):
-                success = [0.0]
-                rewards = [0.0]
+                num_generated_sequences = len(answers)
+                success = [0.0] * num_generated_sequences
+                rewards = [0.0] * num_generated_sequences
                 logger.debug(f"Reward Zero because of Tool Call: {rewards}")
             else:
                 _, success, *_ = await env.step((qid, answers))
@@ -437,18 +439,28 @@ class MathMultiTurnAgent(Agent):
                 ]
                 logger.debug(f"Reward Positive because End of Generation: {rewards}")
 
-            
-            prev_len = len(full_input_ids)      # tokens we already have
-            new_tokens = list(act.seqs[0])[prev_len:]          # only the fresh suffix
-            full_input_ids.extend(new_tokens)
-            full_prompt_mask.extend([0] * len(new_tokens))
+            all_success.extend(success)
+            all_answers.extend(answers)
 
-            needed_lp = act.logprobs[0][prev_len-1:]
-            assert len(needed_lp) == len(new_tokens)
-            full_logprobs.extend(needed_lp)
+            x["data"]["packed_input_ids"].extend(list(act.seqs[0]))
+            x["data"]["packed_logprobs"].extend(list(act.logprobs[0]))
+            x["data"]["seq_no_eos_mask"].append(act.no_eos[0])
+            all_rewards.append(rewards[0])
+            x["data"]["prompt_mask"].extend(
+                [1] * act.prompt_len + [0] * (act.seqlens[0] - act.prompt_len)
+            )
 
-            if turn == 0:
-                x["data"]["version_start"] = torch.tensor(act.version_start, dtype=torch.int)
+            x["data"]["version_start"].extend(list(act.version_start))
+            x["data"]["version_end"].extend(list(act.version_end))
+
+            x["seqlens"]["packed_input_ids"][0].append(act.seqlens[0])
+            x["seqlens"]["packed_logprobs"][0].append(act.seqlens[0] - 1)
+            x["seqlens"]["prompt_mask"][0].append(act.seqlens[0])
+
+            x["seqlens"]["seq_no_eos_mask"][0].append(1)
+            x["seqlens"]["rewards"][0].append(1)
+            x["seqlens"]["version_start"][0].append(1)
+            x["seqlens"]["version_end"][0].append(1)
 
             token_ids = list(act.seqs[0])
 
@@ -469,11 +481,13 @@ class MathMultiTurnAgent(Agent):
                 add_generation_prompt=True,
                 tokenize=False,
             )
-
             
             logger.debug(f"New Feedback: {feedback[:2000]}")
             feedback = self.tokenizer(feedback)["input_ids"]
 
+
+            
+            token_ids.extend(feedback)
             print(f"LLM Reponse: {llm_response}")
             print(f"Feedback tokens: {feedback[:2000]}")
             print(f"Feedback token ids: {len(feedback)}")
@@ -483,57 +497,31 @@ class MathMultiTurnAgent(Agent):
 
 
             max_context = 32768 - self.gconfig.max_new_tokens
-            if (len(token_ids) + len(feedback)) > max_context:
+            if len(token_ids) > max_context:
+
                 logger.info(
                     f"Context for next turn ({len(token_ids)} tokens) would exceed "
                     f"the limit ({max_context}). Terminating trajectory."
                 )
                 break
-            # Maybe this would be good x["data"]["seq_no_eos_mask"] = torch.tensor(act.no_eos, dtype=torch.bool)
-            
-            
-            else:
-                token_ids.extend(feedback)  
-
-            full_input_ids.extend(feedback)            
-            full_prompt_mask.extend([1] * len(feedback))
-            full_logprobs.extend([0.0] * len(feedback))       
-        
-
-        x["data"]["packed_input_ids"] = torch.tensor(full_input_ids, dtype=torch.long)
-        x["data"]["prompt_mask"]      = torch.tensor(full_prompt_mask, dtype=torch.bool)
-        x["data"]["packed_logprobs"]  = torch.tensor(full_logprobs,  dtype=torch.float32)
-
-        x["seqlens"]["packed_input_ids"][0] = len(full_input_ids)
-        x["seqlens"]["prompt_mask"][0]      = len(full_prompt_mask)
-        x["seqlens"]["packed_logprobs"][0]  = len(full_logprobs)
-
-
-        x["data"]["rewards"] = torch.tensor(rewards, dtype=torch.float32)
-        x["data"]["seq_no_eos_mask"] = torch.tensor(act.no_eos, dtype=torch.bool)
-        x["data"]["version_end"] = torch.tensor(act.version_end, dtype=torch.int)
-
-        x["seqlens"]["seq_no_eos_mask"][0] = 1
-        x["seqlens"]["rewards"][0] = 1
-        x["seqlens"]["version_start"][0] = 1
-        x["seqlens"]["version_end"][0] = 1
-
-
 
         self.log_rewards_to_file(
             str(qid),
             prompt_str,
             seqlens=x["seqlens"]["packed_input_ids"][0],
-            answers=answers,
+            answers=all_answers,
             prompt_len=len(prompt_token_ids),
-            rewards=rewards,
-            success=success,
+            rewards=all_rewards,
+            success=all_success,
             version_starts=x["data"]["version_start"],
             version_ends=x["data"]["version_end"],
         )
 
-
-        
+        for i in reversed(range(len(all_rewards) - 1)):
+            all_rewards[i] = (
+                all_rewards[i] + all_rewards[i + 1] * self.turn_level_discount
+            )
+        x["data"]["rewards"] = all_rewards
 
         for k in x["keys"]:
             if not isinstance(x["data"][k], torch.Tensor):
