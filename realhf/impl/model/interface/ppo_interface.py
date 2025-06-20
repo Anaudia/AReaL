@@ -707,11 +707,22 @@ class PPOActorInterface(model_api.ModelInterface):
         if use_prox_logp:
             flat_data["prox_logp"] = input_.data["proximal_logprobs"].float()
 
+
+        #### Start Change ####
+        # flat_input = SequenceSample.from_default(
+        #     ids=list(range(input_.bs * self.group_size)),
+        #     data=flat_data,
+        #     seqlens=[int(x) for x in input_lens.cpu().numpy().tolist()],
+        # )
+
+        num_seqs = len(input_lens)
         flat_input = SequenceSample.from_default(
-            ids=list(range(input_.bs * self.group_size)),
-            data=flat_data,
+            ids=list(range(num_seqs)),
             seqlens=[int(x) for x in input_lens.cpu().numpy().tolist()],
+            data=flat_data,
         )
+
+        #### End Change ####
 
         if self.use_dense_reward:
             dense_reward_score = dense_reward_score[shift_one_indices]
@@ -1230,6 +1241,8 @@ class PPOCriticInterface(model_api.ModelInterface):
         else:
             normalized_returns = returns
 
+
+        #### Start Change ####
         # Prepare data to be splitted into mini-batches.
         flat_input = SequenceSample.from_default(
             ids=list(range(input_.bs * self.group_size)),
@@ -1242,6 +1255,8 @@ class PPOCriticInterface(model_api.ModelInterface):
             ),
             seqlens=[int(x) for x in input_lens.cpu().numpy().tolist()],
         )
+
+        #### 
 
         # Logging.
         with stats_tracker.scope("ppo_critic"):
