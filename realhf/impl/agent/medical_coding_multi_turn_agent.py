@@ -482,7 +482,7 @@ class MathMultiTurnAgent(Agent):
             print(f"Tokens decoded: {self.tokenizer.decode(token_ids)}")
 
 
-            max_context = 32768 - self.gconfig.max_new_tokens
+            max_context = 20768 - self.gconfig.max_new_tokens
             if (len(token_ids) + len(feedback)) > max_context:
                 logger.info(
                     f"Context for next turn ({len(token_ids)} tokens) would exceed "
@@ -513,23 +513,34 @@ class MathMultiTurnAgent(Agent):
         x["data"]["seq_no_eos_mask"] = torch.tensor(act.no_eos, dtype=torch.bool)
         x["data"]["version_end"] = torch.tensor(act.version_end, dtype=torch.int)
 
-        x["seqlens"]["seq_no_eos_mask"][0] = 1
-        x["seqlens"]["rewards"][0] = 1
-        x["seqlens"]["version_start"][0] = 1
-        x["seqlens"]["version_end"][0] = 1
+        x["seqlens"]["packed_input_ids"][0] = [len(full_input_ids)]    # FIX: Was an int, now a List[int]
+        x["seqlens"]["prompt_mask"][0]      = [len(full_prompt_mask)]  # FIX: Was an int, now a List[int]
+        x["seqlens"]["packed_logprobs"][0]  = [len(full_logprobs)]     # FIX: Was an int, now a List[int]
 
+        # These fields each have one value per sample.
+        x["seqlens"]["seq_no_eos_mask"][0] = [1] # FIX: Was 1, now [1]
+        x["seqlens"]["rewards"][0] = [1]         # FIX: Was 1, now [1]
+        x["seqlens"]["version_start"][0] = [1]   # FIX: Was 1, now [1]
+        x["seqlens"]["version_end"][0] = [1]     # FIX: Was 1, now [1]
+        # ========================================================================
+        # END OF CORRECTIONS
+        # ========================================================================
 
+        # My previous fix for the logging call is still necessary.
+        total_seqlen = x["seqlens"]["packed_input_ids"][0][0] # Note the double index
+        version_start_val = x["data"]["version_start"].item()
+        version_end_val = x["data"]["version_end"].item()
 
         self.log_rewards_to_file(
             str(qid),
             prompt_str,
-            seqlens=x["seqlens"]["packed_input_ids"][0],
-            answers=answers,
+            seqlens=[total_seqlen],            # FIX: Was an int, now a List[int]
+            answers=answers,                   # This is already a list of length 1
             prompt_len=len(prompt_token_ids),
-            rewards=rewards,
-            success=success,
-            version_starts=x["data"]["version_start"],
-            version_ends=x["data"]["version_end"],
+            rewards=rewards,                   # This is already a list of length 1
+            success=success,                   # This is already a list of length 1
+            version_starts=[version_start_val],# FIX: Was a tensor, now a List[int]
+            version_ends=[version_end_val],    # FIX: Was a tensor, now a List[int]
         )
 
 

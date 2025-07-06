@@ -38,6 +38,7 @@ share/python-wheels/
 *.egg
 MANIFEST
 sglang
+rl_areal/medical_coding_dataset.jsonl
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
